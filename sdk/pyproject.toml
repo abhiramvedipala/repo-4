@@ -1,0 +1,34 @@
+[project]
+name = "spanscope"
+version = "0.1.0"
+description = "OpenTelemetry-compatible tracing SDK for LLM applications"
+requires-python = ">=3.11"
+# No runtime deps yet — opentelemetry-sdk etc. land in Phase 2/4 when the Tracer uses them.
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "httpx>=0.27",
+    "ruff>=0.6",
+    "mypy>=1.11",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
