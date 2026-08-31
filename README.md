@@ -6,8 +6,10 @@ tokens, cost, model, provider, prompt/response, errors, parent-child relationshi
 to an ingest API, stores it in Postgres, and surfaces it in a Next.js dashboard — trace
 filtering, a waterfall view of a single trace, and aggregate metrics.
 
-**Status:** Phase 2 (SDK core) — Postgres schema + a working `Tracer` (span nesting, buffering,
-background flush). No LLM instrumentation, ingest API, or dashboard yet.
+**Status:** Phase 3 (SDK LLM instrumentation) — Postgres schema, `Tracer`, and OpenAI/Anthropic
+client wrappers (`spanscope.instrument_openai`, `spanscope.instrument_anthropic`) that
+auto-capture model, tokens, cost, and errors with zero call-site changes. No ingest API or
+dashboard yet.
 
 ## Stack
 
@@ -56,5 +58,5 @@ make test
 make lint
 ```
 
-There's no ingest API, dashboard, or LLM instrumentation yet — those land in Phases 3-6. This
-section grows as each phase does.
+There's no ingest API or dashboard yet — those land in Phases 5-6. This section grows as each
+phase does.

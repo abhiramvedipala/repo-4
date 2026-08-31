@@ -1,6 +1,4 @@
-"""Span data model. No LLM-specific fields yet — Phase 3 extends this with
-provider/model/token/cost fields once there's an actual LLM call to capture.
-"""
+"""Span data model, including the LLM-call fields Phase 3's provider wrappers populate."""
 
 from __future__ import annotations
 
@@ -43,6 +41,13 @@ class Span:
     status: SpanStatus = SpanStatus.UNSET
     error_type: str | None = None
     error_message: str | None = None
+    provider: str | None = None  # 'openai' | 'anthropic' | None for non-LLM spans
+    model: str | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    cost_usd: float | None = None
+    prompt: str | None = None
+    completion: str | None = None
     attributes: dict[str, AttributeValue] = field(default_factory=dict)
 
     def set_attribute(self, key: str, value: AttributeValue) -> None:
