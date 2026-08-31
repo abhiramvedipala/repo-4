@@ -6,7 +6,7 @@ tokens, cost, model, provider, prompt/response, errors, parent-child relationshi
 to an ingest API, stores it in Postgres, and surfaces it in a Next.js dashboard — trace
 filtering, a waterfall view of a single trace, and aggregate metrics.
 
-**Status:** Phase 0 (scaffold) — nothing functional yet.
+**Status:** Phase 1 (data model) — Postgres schema exists, nothing else functional yet.
 
 ## Stack
 
@@ -50,9 +50,10 @@ filtering, a waterfall view of a single trace, and aggregate metrics.
 cp .env.example .env
 make install   # uv sync (sdk, api) + npm install (web)
 make dev       # docker compose up: postgres + redis
+make migrate   # applies api/migrations/*.sql
 make test
 make lint
 ```
 
-There's no ingest API, dashboard, or SDK behavior yet — those land in Phases 1-6. This section
+There's no ingest API, dashboard, or SDK behavior yet — those land in Phases 2-6. This section
 grows as each phase does.
