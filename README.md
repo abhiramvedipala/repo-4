@@ -6,7 +6,8 @@ tokens, cost, model, provider, prompt/response, errors, parent-child relationshi
 to an ingest API, stores it in Postgres, and surfaces it in a Next.js dashboard — trace
 filtering, a waterfall view of a single trace, and aggregate metrics.
 
-**Status:** Phase 1 (data model) — Postgres schema exists, nothing else functional yet.
+**Status:** Phase 2 (SDK core) — Postgres schema + a working `Tracer` (span nesting, buffering,
+background flush). No LLM instrumentation, ingest API, or dashboard yet.
 
 ## Stack
 
@@ -55,5 +56,5 @@ make test
 make lint
 ```
 
-There's no ingest API, dashboard, or SDK behavior yet — those land in Phases 2-6. This section
-grows as each phase does.
+There's no ingest API, dashboard, or LLM instrumentation yet — those land in Phases 3-6. This
+section grows as each phase does.
