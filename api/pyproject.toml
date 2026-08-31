@@ -3,8 +3,13 @@ name = "spanscope-api"
 version = "0.1.0"
 description = "SpanScope ingest and query service"
 requires-python = ">=3.11"
-# fastapi/pydantic/asyncpg land in Phase 5 when there are endpoints to serve.
-dependencies = []
+# Phase 4: fastapi + opentelemetry-proto for a wire-format-parsing POST /v1/traces (no
+# persistence yet). pydantic (request validation) and asyncpg (Postgres) land in Phase 5
+# alongside the real ingest/query endpoints.
+dependencies = [
+    "fastapi>=0.115",
+    "opentelemetry-proto>=1.27",
+]
 
 [project.optional-dependencies]
 dev = [

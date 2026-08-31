@@ -3,9 +3,12 @@ name = "spanscope"
 version = "0.1.0"
 description = "OpenTelemetry-compatible tracing SDK for LLM applications"
 requires-python = ">=3.11"
-# No runtime deps — Phase 2's Tracer is stdlib-only (contextvars/queue/threading).
-# opentelemetry-sdk lands in Phase 4 when we reconcile with the real OTel SDK.
-dependencies = []
+# Phase 4: Tracer is now backed by the real OTel SDK (TracerProvider, BatchSpanProcessor,
+# real Span objects) instead of Phase 2's hand-rolled queue+thread.
+dependencies = [
+    "opentelemetry-sdk>=1.27",
+    "opentelemetry-exporter-otlp-proto-http>=1.27",
+]
 
 [project.optional-dependencies]
 # Extras, not core deps: a user tracing only OpenAI shouldn't have to install anthropic,

@@ -1,13 +1,23 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from opentelemetry.sdk.trace import ReadableSpan
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from opentelemetry.trace import StatusCode
 
-from spanscope import SpanStatus, Tracer
-from spanscope.exporters import InMemoryExporter
+from spanscope import Tracer, semconv
 from spanscope.integrations.anthropic import instrument_anthropic
+
+
+def _attrs(span: ReadableSpan) -> Mapping[str, Any]:
+    # ReadableSpan.attributes is typed Mapping | None — narrow once here rather than
+    # asserting at every call site (see test_openai_integration.py for the same helper).
+    assert span.attributes is not None
+    return span.attributes
 
 
 class _FakeMessages:
@@ -23,8 +33,8 @@ class _FakeClient:
         self.messages = _FakeMessages(factory)
 
 
-def _tracer(flush_interval: float = 0.05) -> tuple[Tracer, InMemoryExporter]:
-    exporter = InMemoryExporter()
+def _tracer(flush_interval: float = 0.05) -> tuple[Tracer, InMemorySpanExporter]:
+    exporter = InMemorySpanExporter()
     tracer = Tracer("test-service", exporter=exporter, flush_interval_seconds=flush_interval)
     return tracer, exporter
 
@@ -48,14 +58,16 @@ def test_non_streaming_success_records_span_and_returns_real_response() -> None:
     assert result is response
 
     tracer.shutdown()
-    assert len(exporter.spans) == 1
-    span = exporter.spans[0]
-    assert span.provider == "anthropic"
-    assert span.status == SpanStatus.OK
-    assert span.input_tokens == 12
-    assert span.output_tokens == 6
-    assert span.completion == "Hello!"
-    assert span.cost_usd is not None
+    spans = exporter.get_finished_spans()
+    assert len(spans) == 1
+    span = spans[0]
+    attrs = _attrs(span)
+    assert attrs[semconv.GEN_AI_SYSTEM] == "anthropic"
+    assert span.status.status_code == StatusCode.OK
+    assert attrs[semconv.GEN_AI_USAGE_INPUT_TOKENS] == 12
+    assert attrs[semconv.GEN_AI_USAGE_OUTPUT_TOKENS] == 6
+    assert attrs[semconv.SPANSCOPE_COMPLETION] == "Hello!"
+    assert semconv.SPANSCOPE_COST_USD in attrs
 
 
 def test_api_error_propagates_and_span_records_error() -> None:
@@ -71,8 +83,9 @@ def test_api_error_propagates_and_span_records_error() -> None:
         fake_client.messages.create(model="claude-3-5-sonnet-20241022", messages=[])
 
     tracer.shutdown()
-    assert exporter.spans[0].status == SpanStatus.ERROR
-    assert exporter.spans[0].error_type == "TimeoutError"
+    spans = exporter.get_finished_spans()
+    assert spans[0].status.status_code == StatusCode.ERROR
+    assert _attrs(spans[0])[semconv.ERROR_TYPE] == "TimeoutError"
 
 
 def test_streaming_merges_usage_across_events_without_altering_events() -> None:
@@ -86,15 +99,9 @@ def test_streaming_merges_usage_across_events_without_altering_events() -> None:
             type="message_start",
             message=SimpleNamespace(usage=SimpleNamespace(input_tokens=20, output_tokens=0)),
         ),
-        SimpleNamespace(
-            type="content_block_delta", delta=SimpleNamespace(text="Hel")
-        ),
-        SimpleNamespace(
-            type="content_block_delta", delta=SimpleNamespace(text="lo!")
-        ),
-        SimpleNamespace(
-            type="message_delta", usage=SimpleNamespace(output_tokens=7)
-        ),
+        SimpleNamespace(type="content_block_delta", delta=SimpleNamespace(text="Hel")),
+        SimpleNamespace(type="content_block_delta", delta=SimpleNamespace(text="lo!")),
+        SimpleNamespace(type="message_delta", usage=SimpleNamespace(output_tokens=7)),
     ]
     fake_client = _FakeClient(lambda **kwargs: iter(events))
     instrument_anthropic(fake_client, tracer)  # type: ignore[arg-type]
@@ -105,10 +112,10 @@ def test_streaming_merges_usage_across_events_without_altering_events() -> None:
     assert received == events
 
     tracer.shutdown()
-    span = exporter.spans[0]
-    assert span.completion == "Hello!"
-    assert span.input_tokens == 20  # from message_start, not overwritten by message_delta
-    assert span.output_tokens == 7  # from message_delta
+    attrs = _attrs(exporter.get_finished_spans()[0])
+    assert attrs[semconv.SPANSCOPE_COMPLETION] == "Hello!"
+    assert attrs[semconv.GEN_AI_USAGE_INPUT_TOKENS] == 20  # from message_start
+    assert attrs[semconv.GEN_AI_USAGE_OUTPUT_TOKENS] == 7  # from message_delta
 
 
 def test_broken_tracer_never_breaks_the_real_call() -> None:

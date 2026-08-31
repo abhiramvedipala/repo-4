@@ -17,8 +17,10 @@ from collections.abc import Callable, Iterable, Iterator
 from contextlib import AbstractContextManager
 from typing import Any
 
+from opentelemetry.trace import SpanKind
+
 from spanscope.costs import cost_for
-from spanscope.span import Span, SpanKind, SpanStatus
+from spanscope.span import Span, SpanStatus
 from spanscope.tracer import Tracer
 
 logger = logging.getLogger("spanscope")
