@@ -6,11 +6,10 @@ tokens, cost, model, provider, prompt/response, errors, parent-child relationshi
 to an ingest API, stores it in Postgres, and surfaces it in a Next.js dashboard — trace
 filtering, a waterfall view of a single trace, and aggregate metrics.
 
-**Status:** Phase 4 (OTel compatibility) — the SDK's `Tracer` is now backed by the real
-`opentelemetry-sdk` (real spans, GenAI semantic convention attributes, exports to any
-OTLP/HTTP endpoint via any real `SpanExporter`). The API has a minimal `POST /v1/traces`
-that accepts both OTLP/HTTP protobuf and SpanScope's own JSON format — no persistence yet,
-that's Phase 5. No dashboard yet.
+**Status:** Phase 5 (ingest + query API) — the API now persists to real Postgres:
+`POST /v1/traces` (batch, upserted, idempotent on retry), `GET /v1/traces` (paginated,
+filtered), `GET /v1/traces/{id}` (full span tree), `GET /v1/metrics/summary` (p50/p95/p99
+latency, cost, error rate, calls by model, time-bucketed). No dashboard yet.
 
 ## Stack
 
@@ -59,5 +58,4 @@ make test
 make lint
 ```
 
-There's no persisted ingest, query endpoints, or dashboard yet — those land in Phases 5-6.
-This section grows as each phase does.
+There's no dashboard yet — that's Phase 6. This section grows as each phase does.

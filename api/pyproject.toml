@@ -3,12 +3,12 @@ name = "spanscope-api"
 version = "0.1.0"
 description = "SpanScope ingest and query service"
 requires-python = ">=3.11"
-# Phase 4: fastapi + opentelemetry-proto for a wire-format-parsing POST /v1/traces (no
-# persistence yet). pydantic (request validation) and asyncpg (Postgres) land in Phase 5
-# alongside the real ingest/query endpoints.
+# fastapi/opentelemetry-proto: Phase 4 (wire-format parsing). asyncpg: Phase 5 (real
+# Postgres persistence + queries). pydantic came in as fastapi's own dependency.
 dependencies = [
     "fastapi>=0.115",
     "opentelemetry-proto>=1.27",
+    "asyncpg>=0.29",
 ]
 
 [project.optional-dependencies]
@@ -33,10 +33,21 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+# B008 (no function calls in argument defaults) fires on every FastAPI Query()/Depends()
+# default — that's the framework's own DI mechanism, not the mutable-default footgun the
+# rule exists for. FastAPI's own docs recommend ignoring it for exactly this reason.
+ignore = ["B008"]
 
 [tool.mypy]
 python_version = "3.11"
 strict = true
 
+# asyncpg ships no py.typed marker / stubs — a genuine gap in the package, not something
+# to work around per call site.
+[[tool.mypy.overrides]]
+module = "asyncpg.*"
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+asyncio_mode = "auto"

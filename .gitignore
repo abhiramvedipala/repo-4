@@ -25,3 +25,6 @@ npm-debug.log*
 
 # --- OS ---
 .DS_Store
+
+# --- editor/tool-local state ---
+.serena/

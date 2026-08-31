@@ -5,10 +5,15 @@ from datetime import UTC, datetime
 from app.otlp import parse_json, parse_otlp_protobuf
 
 
-def test_parse_otlp_protobuf_extracts_genai_fields(otlp_request_bytes: bytes) -> None:
-    records = parse_otlp_protobuf(otlp_request_bytes)
-    assert len(records) == 1
-    record = records[0]
+def test_parse_otlp_protobuf_extracts_genai_fields_and_service(
+    otlp_request_bytes: bytes,
+) -> None:
+    batches = parse_otlp_protobuf(otlp_request_bytes)
+    assert len(batches) == 1
+    batch = batches[0]
+    assert batch.service == "test-service"  # resource-level, not per-span
+    assert len(batch.spans) == 1
+    record = batch.spans[0]
     assert record.trace_id == "01" * 16
     assert record.span_id == "02" * 8
     assert record.parent_span_id is None  # root span: empty bytes -> None, not ""
@@ -27,6 +32,7 @@ def test_parse_otlp_protobuf_extracts_genai_fields(otlp_request_bytes: bytes) ->
 
 def test_parse_json_produces_the_same_shape_as_otlp() -> None:
     payload = {
+        "service": "test-service",
         "spans": [
             {
                 "span_id": "02" * 8,
@@ -44,11 +50,13 @@ def test_parse_json_produces_the_same_shape_as_otlp() -> None:
                 "completion": "Hello!",
                 "attributes": {"custom.tag": "keep-me"},
             }
-        ]
+        ],
     }
-    records = parse_json(payload)
-    assert len(records) == 1
-    record = records[0]
+    batches = parse_json(payload)
+    assert len(batches) == 1
+    batch = batches[0]
+    assert batch.service == "test-service"
+    record = batch.spans[0]
     assert record.trace_id == "01" * 16
     assert record.span_id == "02" * 8
     assert record.kind == "client"
@@ -61,12 +69,14 @@ def test_parse_json_produces_the_same_shape_as_otlp() -> None:
 
 
 def test_json_and_otlp_normalize_the_same_span_identically(otlp_request_bytes: bytes) -> None:
-    """The actual point of Phase 4's API work: two different wire formats describing
-    the same span must produce equivalent SpanRecords.
+    """The actual point of Phase 4/5's parsing layer: two different wire formats
+    describing the same span must produce equivalent records.
     """
-    otlp_record = parse_otlp_protobuf(otlp_request_bytes)[0]
-    json_record = parse_json(
+    otlp_batch = parse_otlp_protobuf(otlp_request_bytes)[0]
+    otlp_record = otlp_batch.spans[0]
+    json_batch = parse_json(
         {
+            "service": otlp_batch.service,
             "spans": [
                 {
                     "span_id": otlp_record.span_id,
@@ -83,10 +93,11 @@ def test_json_and_otlp_normalize_the_same_span_identically(otlp_request_bytes: b
                     "completion": otlp_record.completion,
                     "attributes": otlp_record.attributes,
                 }
-            ]
+            ],
         }
-    )[0]
-    assert otlp_record == json_record
+    )
+    assert json_batch[0].service == otlp_batch.service
+    assert json_batch[0].spans[0] == otlp_record
 
 
 def test_parse_json_defaults_kind_and_status_when_omitted() -> None:
@@ -101,6 +112,8 @@ def test_parse_json_defaults_kind_and_status_when_omitted() -> None:
             }
         ]
     }
-    record = parse_json(payload)[0]
+    batch = parse_json(payload)[0]
+    assert batch.service == "unknown"  # no "service" key -> default
+    record = batch.spans[0]
     assert record.kind == "internal"
     assert record.status == "unset"

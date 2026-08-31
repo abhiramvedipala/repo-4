@@ -1,10 +1,9 @@
 """Wire-format parsing for the ingest endpoint: real OTLP/HTTP protobuf, and
-SpanScope's own simpler JSON. Both normalize to the same SpanRecord shape — everything
-downstream of parsing works from SpanRecord, never from either wire format directly.
+SpanScope's own simpler JSON. Both normalize to the same ParsedBatch/SpanRecord shape —
+everything downstream of parsing works from that, never from either wire format directly.
 
-Phase 5 replaces the caller of this module (currently: count and discard) with real
-Pydantic request validation and a Postgres batch insert of the same SpanRecord objects
-produced here; this parsing logic itself doesn't change.
+Phase 5's ingest endpoint calls this then does real Pydantic-adjacent validation and a
+Postgres batch insert; this parsing logic itself doesn't change per phase.
 """
 
 from __future__ import annotations
@@ -32,6 +31,11 @@ SPANSCOPE_PROMPT = "spanscope.prompt"
 SPANSCOPE_COMPLETION = "spanscope.completion"
 SPANSCOPE_ERROR_MESSAGE = "spanscope.error.message"
 
+# Standard OTel resource attribute key for the service name — set once per TracerProvider
+# (spanscope.Tracer(service_name=...)), not per span. This is why it's handled separately
+# from the per-span GenAI keys above.
+SERVICE_NAME = "service.name"
+
 _PB_KIND_TO_STR = {
     PbSpan.SPAN_KIND_INTERNAL: "internal",
     PbSpan.SPAN_KIND_SERVER: "server",
@@ -51,7 +55,8 @@ _PB_STATUS_TO_STR = {
 @dataclass
 class SpanRecord:
     """Normalized shape both wire formats parse into — mirrors the spans table columns
-    from api/migrations/0001_init.sql.
+    from api/migrations/0001_init.sql. Deliberately has no `service` field: that's a
+    resource/batch-level concept (see ParsedBatch), not a per-span one.
     """
 
     span_id: str
@@ -74,12 +79,23 @@ class SpanRecord:
     attributes: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass
+class ParsedBatch:
+    """One resource's worth of spans, tagged with the service that produced them. A
+    single OTLP request can carry multiple resource_spans (different services in one
+    export) — hence a list of these, not a single service name for the whole request.
+    """
+
+    service: str
+    spans: list[SpanRecord]
+
+
 def _any_value_to_python(value: AnyValue) -> Any:
     # Deliberately Any, not a narrower union: this is a trust boundary — a client
     # speaking raw OTLP protobuf can put any AnyValue variant behind any attribute key,
     # and nothing here enforces that gen_ai.usage.input_tokens is actually an int. Phase
-    # 5's Pydantic validation is where that gets enforced before anything is persisted;
-    # this parsing layer only normalizes shape, not correctness.
+    # 5's validation is where that gets enforced before anything is persisted; this
+    # parsing layer only normalizes shape, not correctness.
     kind = value.WhichOneof("value")
     if kind is None:
         return None
@@ -98,15 +114,19 @@ def _nanos_to_datetime(nanos: int) -> datetime:
     return datetime.fromtimestamp(nanos / 1_000_000_000, tz=UTC)
 
 
-def parse_otlp_protobuf(body: bytes) -> list[SpanRecord]:
+def parse_otlp_protobuf(body: bytes) -> list[ParsedBatch]:
     """Decodes a real OTLP/HTTP protobuf ExportTraceServiceRequest — the exact wire
     format the Phase 4 SDK (or any other OTel SDK/collector) sends via OTLPSpanExporter.
     """
     request = ExportTraceServiceRequest()
     request.ParseFromString(body)
 
-    records: list[SpanRecord] = []
+    batches: list[ParsedBatch] = []
     for resource_spans in request.resource_spans:
+        resource_attrs = _attrs_to_dict(list(resource_spans.resource.attributes))
+        service = resource_attrs.get(SERVICE_NAME) or "unknown"
+
+        records: list[SpanRecord] = []
         for scope_spans in resource_spans.scope_spans:
             for pb_span in scope_spans.spans:
                 attrs = _attrs_to_dict(list(pb_span.attributes))
@@ -132,16 +152,20 @@ def parse_otlp_protobuf(body: bytes) -> list[SpanRecord]:
                         attributes=attrs,  # whatever's left after pulling out known keys
                     )
                 )
-    return records
+        batches.append(ParsedBatch(service=service, spans=records))
+    return batches
 
 
-def parse_json(payload: dict[str, Any]) -> list[SpanRecord]:
-    """SpanScope's own simpler JSON ingest format — a flat {"spans": [...]} list.
-    Deliberately a draft: Phase 5 formalizes this exact shape with real Pydantic models
-    (field validation, required-field errors, etc.); this proves both wire formats
-    normalize to the same SpanRecord.
+def parse_json(payload: dict[str, Any]) -> list[ParsedBatch]:
+    """SpanScope's own simpler JSON ingest format — {"service": "...", "spans": [...]}.
+    One service per request: our own SDK's Tracer has exactly one service_name per
+    process, so unlike OTLP there's no need to support multiple resources per request
+    here. Deliberately a draft: Phase 5 formalizes this shape with real Pydantic models
+    (field validation, required-field errors); this proves both wire formats normalize
+    to the same shape.
     """
-    return [
+    service = payload.get("service") or "unknown"
+    spans = [
         SpanRecord(
             span_id=item["span_id"],
             trace_id=item["trace_id"],
@@ -164,3 +188,4 @@ def parse_json(payload: dict[str, Any]) -> list[SpanRecord]:
         )
         for item in payload.get("spans", [])
     ]
+    return [ParsedBatch(service=service, spans=spans)]
