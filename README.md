@@ -1,4 +1,5 @@
-# SpanScope
+# SpanScope -- a good project for improiving my ai skills as well aloing with SDE skiolsl 
+
 
 A self-hostable observability layer for LLM applications. Instrument your app with a small
 Python SDK, SpanScope captures every LLM call as an OpenTelemetry-compatible span (latency,
