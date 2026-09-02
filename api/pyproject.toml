@@ -9,6 +9,7 @@ dependencies = [
     "fastapi>=0.115",
     "opentelemetry-proto>=1.27",
     "asyncpg>=0.29",
+    "uvicorn[standard]>=0.30",
 ]
 
 [project.optional-dependencies]
